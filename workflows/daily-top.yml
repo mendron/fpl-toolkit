@@ -1,0 +1,47 @@
+name: Daily TOP (FPL)
+
+on:
+  schedule:
+    # 07:00 UTC ≈ 08:00 Lisboa (agosto). Ajusta se quiseres outra hora.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  daily-top:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: pip install -e .
+      - name: Generate TOP lists
+        run: |
+          TS=$(date -u +'%Y-%m-%d')
+          OUT_DIR="reports/${TS}"
+          mkdir -p "${OUT_DIR}"
+          for POS in GK DEF MID FWD; do
+            python -m fplkit.cli top --pos ${POS} --n 15 > "${OUT_DIR}/top_${POS}.txt"
+          done
+          # markdown resumo
+          {
+            echo "# FPL TOP – ${TS}"
+            for POS in GK DEF MID FWD; do
+              echo -e "\n## ${POS}\n"
+              echo '```'
+              cat "${OUT_DIR}/top_${POS}.txt"
+              echo '```'
+            done
+          } > "${OUT_DIR}/TOP.md"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fpl-top-${{ github.run_id }}
+          path: reports/**
+          if-no-files-found: error
+          retention-days: 14
